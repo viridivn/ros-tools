@@ -128,6 +128,11 @@ def spectacular_to_rosbag(video_path: Path, metadata_path: Path, output_path: Pa
                                 angular_velocity_covariance=covariance,
                                 linear_acceleration_covariance=covariance
                             )
+                            raw = typestore.serialize_ros1(imu_msg, Imu.__msgtype__)
+                            writer.write(conn_imu, timestamp_ns, raw)
+                            seq_counters['imu'] += 1
+                            seq_counters['total'] += 1
+                            accel_cache = None 
 
                         else:
                             print(f"{YELLOW}Got gyro data without matching accel at line {i+1}{RESET}", file=sys.stderr)
