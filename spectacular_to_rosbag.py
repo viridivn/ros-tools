@@ -17,17 +17,21 @@ def spectacular_to_rosbag(video_path: Path, metadata_path: Path, output_path: Pa
     if not video_path.exists() or not metadata_path.exists():
         print(f"{RED}One or both input files do not exist.{RESET}", file=sys.stderr)
         sys.exit(1)
-    
+
+    if output_path.exists():
+        print(f"{RED}Output file already exists.{RESET}", file=sys.stderr)
+        sys.exit(1)
+
     print("Initialize ROS1 typestore (Noetic)")
     typestore = get_typestore(Stores.ROS1_NOETIC)
 
-    Image = typestore.get('sensor_msgs/msg/Image')
-    Imu = typestore.get('sensor_msgs/msg/Imu')
-    MagneticField = typestore.get('sensor_msgs/msg/MagneticField')
-    Header = typestore.get('std_msgs/msg/Header')
-    Vector3 = typestore.get('geometry_msgs/msg/Vector3')
-    Quaternion = typestore.get('geometry_msgs/msg/Quaternion')
-    Time = typestore.get('builtin_interfaces/msg/Time')
+    Image = typestore.types['sensor_msgs/msg/Image']
+    Imu = typestore.types['sensor_msgs/msg/Imu']
+    MagneticField = typestore.types['sensor_msgs/msg/MagneticField']
+    Header = typestore.types['std_msgs/msg/Header']
+    Vector3 = typestore.types['geometry_msgs/msg/Vector3']
+    Quaternion = typestore.types['geometry_msgs/msg/Quaternion']
+    Time = typestore.types['builtin_interfaces/msg/Time']
 
     print("Load input data")
     with metadata_path.open('r') as f:
@@ -90,7 +94,7 @@ def spectacular_to_rosbag(video_path: Path, metadata_path: Path, output_path: Pa
                         encoding='bgr8',
                         is_bigendian=0,
                         step=frame.strides[0],
-                        data=frame.tobytes()
+                        data=frame.flatten()
                     )
 
                     raw = typestore.serialize_ros1(img_msg, Image.__msgtype__)
