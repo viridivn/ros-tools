@@ -7,7 +7,7 @@ def validate_rosbag(bag_path: Path) -> bool:
     try:
         with AnyReader([bag_path]) as reader:
             for connection, timestamp, rawdata in reader.messages():
-                msg = reader.deserialize(rawdata, connection.msgtype)
+                msg = reader.deserialize(rawdata, connection.msgtype) # if deserialization works, the message is likely valid
                 msg_count += 1
                 msg_types.add(msg.__class__.__name__)
                 if msg_count % 1000 == 0:
