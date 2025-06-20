@@ -11,26 +11,32 @@ def bgr8_to_mono8(src: Path, dst: Path):
 
     with Reader(src) as reader, Writer(dst) as writer:
         types = {}
+        typecount = 0
         for conn in reader.connections:
+            typecount += 1
             types.update(get_types_from_msg(conn.msgdef.data, conn.msgtype))
         typestore.register(types)
-
+        print(f"Enumerated {len(types)} types from {typecount} connections")
         conn_map = {
             conn.id: writer.add_connection(
                 conn.topic,
                 conn.msgtype,
                 typestore=typestore,
                 md5sum=conn.digest,
-                msgdef=conn.msgdef,
-                callerid=conn.callerid,
-                latching=conn.latching,
+                msgdef=conn.msgdef.data,
+                callerid=conn.ext.callerid,
+                latching=conn.ext.latching,
             )
             for conn in reader.connections
         }
 
+        msgcount = 0
         for conn, timestamp, rawdata in reader.messages():
+            if msgcount % 1000 == 0:
+                print(f"Processed {msgcount} messages")
             if conn.msgtype != 'sensor_msgs/msg/Image':
                 writer.write(conn_map[conn.id], timestamp, rawdata)
+                msgcount += 1
                 continue
 
             msg = typestore.deserialize_ros1(rawdata, conn.msgtype)
@@ -52,6 +58,8 @@ def bgr8_to_mono8(src: Path, dst: Path):
                 timestamp, 
                 typestore.serialize_ros1(msg, conn.msgtype)
             )
+            msgcount += 1
+
 
 def main():
     parser = argparse.ArgumentParser(description="Convert BGR8 images in a ROS1 bag to MONO8.")
