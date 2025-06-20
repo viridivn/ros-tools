@@ -8,6 +8,7 @@ import numpy as np
 from rosbags.rosbag1 import Writer
 from rosbags.typesys import Stores, get_typestore
 
+# ANSI color codes
 YELLOW = '\033[93m'
 RED = '\033[91m'
 CYAN = '\033[96m'
@@ -25,6 +26,7 @@ def spectacular_to_rosbag(video_path: Path, metadata_path: Path, output_path: Pa
     print("Initialize ROS1 typestore (Noetic)")
     typestore = get_typestore(Stores.ROS1_NOETIC)
 
+    # Define message types
     Image = typestore.types['sensor_msgs/msg/Image']
     Imu = typestore.types['sensor_msgs/msg/Imu']
     MagneticField = typestore.types['sensor_msgs/msg/MagneticField']
@@ -37,6 +39,7 @@ def spectacular_to_rosbag(video_path: Path, metadata_path: Path, output_path: Pa
     with metadata_path.open('r') as f:
         metadata = f.readlines()
 
+    # Load video file
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         print(f"{RED}Error opening video file.{RESET}", file=sys.stderr)
@@ -44,6 +47,7 @@ def spectacular_to_rosbag(video_path: Path, metadata_path: Path, output_path: Pa
 
     try:
         with Writer(output_path) as writer:
+            # Open writer connections
             conn_img = writer.add_connection('/camera/image_raw', Image.__msgtype__, typestore=typestore)
             conn_imu = writer.add_connection('/imu/data', Imu.__msgtype__, typestore=typestore)
             conn_mag = writer.add_connection('/imu/mag', MagneticField.__msgtype__, typestore=typestore)
@@ -54,8 +58,9 @@ def spectacular_to_rosbag(video_path: Path, metadata_path: Path, output_path: Pa
                 'mag': 0,
                 'total': 0
             }
-            accel_cache = None
+            accel_cache = None # Surprise tool that will help us later
 
+            # For each metadata line
             for i, line in enumerate(metadata):
                 if seq_counters['total'] % 1000 == 0 and seq_counters['total'] > 0:
                     print(f"Processed {seq_counters['total']} messages")
@@ -64,18 +69,21 @@ def spectacular_to_rosbag(video_path: Path, metadata_path: Path, output_path: Pa
                 except json.JSONDecodeError:
                     print(f"{YELLOW}Skipping invalid JSON line {i+1}: {line.strip()}{RESET}", file=sys.stderr)
                     continue
-                if "version" in data:
+                if "version" in data: # Version handling? never heard of her
                     continue
 
+                # Math courtesy of stackoverflow guy
                 timestamp_float = data["time"]
                 timestamp_ns = int(timestamp_float * 1e9)
                 secs = int(timestamp_float)
                 nsecs = int((timestamp_float - secs) * 1e9)
                 ros_time = Time(sec=secs, nanosec=nsecs)
 
+                # Image message handling
                 if "frames" in data:
                     frame_idx = data["number"]
 
+                    # Read frame from video
                     cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
                     ret, frame = cap.read()
                     if not ret:
@@ -102,11 +110,14 @@ def spectacular_to_rosbag(video_path: Path, metadata_path: Path, output_path: Pa
                     seq_counters['image'] += 1
                     seq_counters['total'] += 1
 
+                # Sensor message handling
                 elif "sensor" in data:
                     sensor = data["sensor"]
                     values= sensor["values"]
 
+                    # Gyro and accelerometer data are handled together because ROS uses IMU messages
                     if sensor["type"] == "accelerometer":
+                        # Cache accelerometer data to be packaged with gyroscope data
                         accel_cache = {"time": timestamp_float, "values": values}
                     
                     elif sensor["type"] == "gyroscope":
@@ -117,7 +128,7 @@ def spectacular_to_rosbag(video_path: Path, metadata_path: Path, output_path: Pa
                                 frame_id='imu_link'
                             )
                             accel = accel_cache["values"]
-                            covariance = np.array([-1.0] + [0.0] * 8, dtype=np.float64)
+                            covariance = np.array([-1.0] + [0.0] * 8, dtype=np.float64) # Placeholder uncertainty values
 
                             imu_msg = Imu(
                                 header=header,
@@ -128,15 +139,17 @@ def spectacular_to_rosbag(video_path: Path, metadata_path: Path, output_path: Pa
                                 angular_velocity_covariance=covariance,
                                 linear_acceleration_covariance=covariance
                             )
+
                             raw = typestore.serialize_ros1(imu_msg, Imu.__msgtype__)
                             writer.write(conn_imu, timestamp_ns, raw)
                             seq_counters['imu'] += 1
                             seq_counters['total'] += 1
-                            accel_cache = None 
+                            accel_cache = None # Reset cache after use
 
                         else:
                             print(f"{YELLOW}Got gyro data without matching accel at line {i+1}{RESET}", file=sys.stderr)
 
+                    # Magnetometer data handling
                     elif sensor["type"] == "magnetometer":
                         header = Header(
                             seq=seq_counters['mag'],
